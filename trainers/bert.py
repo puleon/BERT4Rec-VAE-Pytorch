@@ -1,6 +1,7 @@
 from .base import AbstractTrainer
 from .utils import recalls_and_ndcgs_for_ks
 
+import torch
 import torch.nn as nn
 
 
@@ -35,6 +36,16 @@ class BERTTrainer(AbstractTrainer):
         seqs, candidates, labels = batch
         scores = self.model(seqs)  # B x T x V
         scores = scores[:, -1, :]  # B x V
+
+        batch_size, vocab_size = scores.size()
+        assert batch_size == sum(labels[:, 0]).item()
+        candidates_full = []
+        for i in range(batch_size):
+            positive_candidate = candidates[i][0].item()
+            candidates_full.append([positive_candidate] + list(range(0, positive_candidate)) + list(range(positive_candidate+1, vocab_size)))
+        candidates = torch.tensor(candidates_full, device=labels.device)
+        labels = torch.cat([torch.ones((batch_size, 1), device=labels.device), torch.zeros((batch_size, vocab_size-1), device=labels.device)], dim=1)
+
         scores = scores.gather(1, candidates)  # B x C
 
         metrics = recalls_and_ndcgs_for_ks(scores, labels, self.metric_ks)
